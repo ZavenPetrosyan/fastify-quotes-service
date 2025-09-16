@@ -24,6 +24,14 @@ npm run dev
 docker-compose up
 ```
 
+## Service URLs
+
+Once running, access the following interfaces:
+
+- **API Documentation**: http://localhost:3000/docs (Swagger UI)
+- **GraphQL Playground**: http://localhost:3000/playground (Interactive GraphQL)
+- **Health Check**: http://localhost:3000/healthz
+
 ## Development
 
 ```bash

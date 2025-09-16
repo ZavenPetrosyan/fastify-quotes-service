@@ -6,6 +6,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import mercurius from 'mercurius';
 import '@fastify/websocket';
+import { renderPlaygroundPage } from 'graphql-playground-html';
 
 import quotesRoutes from './application/rest/routes/quotes';
 import analyticsRoutes from './application/rest/routes/analytics';
@@ -45,10 +46,12 @@ async function createApp() {
   await fastify.register(helmet, {
     contentSecurityPolicy: {
       directives: {
-        defaultSrc: INFRASTRUCTURE_CONSTANTS.SECURITY.CSP_DEFAULT_SRC,
-        styleSrc: INFRASTRUCTURE_CONSTANTS.SECURITY.CSP_STYLE_SRC,
-        scriptSrc: INFRASTRUCTURE_CONSTANTS.SECURITY.CSP_SCRIPT_SRC,
-        imgSrc: INFRASTRUCTURE_CONSTANTS.SECURITY.CSP_IMG_SRC,
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com", "https://cdn.jsdelivr.net", "https://fonts.googleapis.com"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com", "https://cdn.jsdelivr.net"],
+        imgSrc: ["'self'", "data:", "https:", "https://cdn.jsdelivr.net"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net"],
+        connectSrc: ["'self'", "ws:", "wss:", "https://cdn.jsdelivr.net"],
       },
     },
   });
@@ -107,14 +110,22 @@ async function createApp() {
       quoteService,
       pubsub,
     }),
-    graphiql: {
-      enabled: APP_CONSTANTS.GRAPHQL.ENABLED,
-    },
     path: APP_CONSTANTS.GRAPHQL.PATH,
     routes: APP_CONSTANTS.GRAPHQL.ROUTES,
     ide: APP_CONSTANTS.GRAPHQL.IDE,
     allowBatchedQueries: APP_CONSTANTS.GRAPHQL.BATCHED_QUERIES,
     subscription: APP_CONSTANTS.GRAPHQL.SUBSCRIPTION,
+  });
+
+  fastify.get('/playground', async (request, reply) => {
+    const playground = renderPlaygroundPage({
+      endpoint: '/graphql',
+      subscriptionEndpoint: '/graphql',
+      settings: {
+        'request.credentials': 'include',
+      },
+    });
+    reply.type('text/html').send(playground);
   });
 
   await fastify.register(quotesRoutes, { quoteService });
@@ -135,7 +146,11 @@ async function start() {
     app.log.info(
       `GraphiQL available at http://${config.HOST}:${config.PORT}${APP_CONSTANTS.GRAPHQL.PATH}`
     );
+    app.log.info(
+      `GraphQL Playground available at http://${config.HOST}:${config.PORT}/playground`
+    );
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error('Error starting server:', error);
     process.exit(1);
   }
