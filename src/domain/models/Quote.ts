@@ -52,6 +52,8 @@ export const QuoteLikeSchema = z.object({
 export const QuoteWithStatsSchema = QuoteSchema.extend({
   likes: z.number().default(0),
   likedByCurrentUser: z.boolean().default(false),
+  popularityScore: z.number().default(0),
+  trendingScore: z.number().default(0),
 });
 
 export const UserIdSchema = z.object({

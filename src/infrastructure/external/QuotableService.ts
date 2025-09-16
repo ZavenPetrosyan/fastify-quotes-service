@@ -1,4 +1,3 @@
-// Using built-in fetch available in Node.js 18+
 import { ExternalQuoteService } from '../../domain/services/ExternalQuoteService';
 import { Quote, QuotableApiResponseSchema, DummyJsonResponseSchema } from '../../domain/models/Quote';
 

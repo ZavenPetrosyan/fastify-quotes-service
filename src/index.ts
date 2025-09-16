@@ -5,14 +5,17 @@ import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import mercurius from 'mercurius';
+import '@fastify/websocket';
 
 import quotesRoutes from './application/rest/routes/quotes';
+import analyticsRoutes from './application/rest/routes/analytics';
 import requestIdPlugin from './application/middleware/requestId';
-import { QuoteServiceImpl } from './application/services/QuoteServiceImpl';
+import { AdvancedQuoteServiceImpl } from './application/services/AdvancedQuoteServiceImpl';
 import { InMemoryQuoteRepository } from './infrastructure/persistence/InMemoryQuoteRepository';
 import { QuotableService } from './infrastructure/external/QuotableService';
 import { typeDefs } from './application/graphql/schema';
 import { resolvers } from './application/graphql/resolvers';
+import { PubSub } from 'graphql-subscriptions';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -36,7 +39,8 @@ async function createApp() {
 
   const quoteRepository = new InMemoryQuoteRepository();
   const externalQuoteService = new QuotableService();
-  const quoteService = new QuoteServiceImpl(quoteRepository, externalQuoteService);
+  const pubsub = new PubSub();
+  const quoteService = new AdvancedQuoteServiceImpl(quoteRepository, externalQuoteService, pubsub);
 
   await fastify.register(helmet, {
     contentSecurityPolicy: {
@@ -61,6 +65,9 @@ async function createApp() {
 
   await fastify.register(requestIdPlugin);
 
+  // Register WebSocket support for GraphQL subscriptions
+  await fastify.register(require('@fastify/websocket'));
+
   await fastify.register(swagger, {
     swagger: {
       info: {
@@ -75,6 +82,10 @@ async function createApp() {
       tags: [
         { name: 'health', description: 'Health check endpoints' },
         { name: 'quotes', description: 'Quote management endpoints' },
+        { name: 'analytics', description: 'Advanced analytics and insights' },
+        { name: 'recommendations', description: 'Smart recommendation engine' },
+        { name: 'insights', description: 'Pattern discovery and insights' },
+        { name: 'feed', description: 'Real-time quote feeds' },
       ],
     },
   });
@@ -102,6 +113,7 @@ async function createApp() {
     resolvers,
     context: () => ({
       quoteService,
+      pubsub,
     }),
     graphiql: {
       enabled: true,
@@ -110,9 +122,11 @@ async function createApp() {
     routes: true,
     ide: true,
     allowBatchedQueries: true,
+    subscription: true,
   });
 
   await fastify.register(quotesRoutes, { quoteService });
+  await fastify.register(analyticsRoutes, { quoteService });
 
   return fastify;
 }

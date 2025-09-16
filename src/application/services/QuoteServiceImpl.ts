@@ -127,6 +127,8 @@ export class QuoteServiceImpl implements QuoteService {
       ...quote,
       likes: likes.length,
       likedByCurrentUser,
+      popularityScore: 0,
+      trendingScore: 0,
     };
   }
 
@@ -182,5 +184,86 @@ export class QuoteServiceImpl implements QuoteService {
       .replace(/[^\w\s]/g, ' ')
       .split(/\s+/)
       .filter(word => word.length > 2);
+  }
+
+  // Stub implementations for new interface methods
+  async getQuotesWithFilter(filter?: any, sort?: any, limit?: number, offset?: number, userId?: string): Promise<QuoteWithStats[]> {
+    return this.searchQuotes(undefined, limit, userId);
+  }
+
+  async getAnalytics(): Promise<any> {
+    return { totalQuotes: 0, totalLikes: 0, mostLikedQuote: null, trendingQuotes: [], popularAuthors: [], recentActivity: [] };
+  }
+
+  async getAnalyticsDashboard(timeRange?: string, userId?: string): Promise<any> {
+    return { overview: {}, trending: {}, engagement: {} };
+  }
+
+  async getTrendingQuotes(limit?: number, timeRange?: string): Promise<QuoteWithStats[]> {
+    return [];
+  }
+
+  async getPopularAuthors(limit?: number): Promise<any[]> {
+    return [];
+  }
+
+  async discoverPatterns(patternType?: string, timeRange?: string, userId?: string): Promise<any> {
+    return { patternType: patternType || 'engagement', insights: [], recommendations: [], generatedAt: new Date().toISOString() };
+  }
+
+  async getUserCollections(userId: string): Promise<any[]> {
+    return [];
+  }
+
+  async getCollection(id: string, userId: string): Promise<any> {
+    throw new Error('Collection not found');
+  }
+
+  async createCollection(name: string, description: string | undefined, isPublic: boolean | undefined, userId: string): Promise<any> {
+    return { id: 'stub', name, description, quotes: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isPublic: isPublic || false, likes: 0, userId };
+  }
+
+  async addQuoteToCollection(collectionId: string, quoteId: string, userId: string): Promise<any> {
+    return this.createCollection('stub', undefined, false, userId);
+  }
+
+  async removeQuoteFromCollection(collectionId: string, quoteId: string, userId: string): Promise<any> {
+    return this.createCollection('stub', undefined, false, userId);
+  }
+
+  async deleteCollection(collectionId: string, userId: string): Promise<void> {
+    // Stub implementation
+  }
+
+  async getUserPreferences(userId: string): Promise<any> {
+    return { userId, favoriteAuthors: [], favoriteTags: [], likedQuotes: [], createdAt: new Date().toISOString() };
+  }
+
+  async updateUserPreferences(userId: string, favoriteAuthors?: string[], favoriteTags?: string[]): Promise<any> {
+    return this.getUserPreferences(userId);
+  }
+
+  async compareQuotes(quoteIds: string[], analysisType?: string, includeMetrics?: boolean): Promise<any> {
+    return { quotes: [], analysis: { similarities: [], differences: [], recommendation: 'Stub implementation', overallSimilarity: 0 } };
+  }
+
+  async getSmartRecommendations(userId: string, limit?: number, algorithm?: string, includeExplanation?: boolean): Promise<any> {
+    return { recommendations: [], algorithm: algorithm || 'stub', reason: 'Stub implementation' };
+  }
+
+  async getQuoteHistory(userId: string, limit?: number): Promise<QuoteWithStats[]> {
+    return [];
+  }
+
+  async getLiveFeed(userId?: string, limit?: number, feedType?: string, includeActivity?: boolean): Promise<any> {
+    return { feed: [], feedType: feedType || 'stub', lastUpdated: new Date().toISOString(), nextUpdate: new Date().toISOString() };
+  }
+
+  async shareQuote(quoteId: string, userId: string): Promise<string> {
+    return `https://quotes-service.com/share/stub-${quoteId}`;
+  }
+
+  async reportQuote(quoteId: string, reason: string, userId: string): Promise<boolean> {
+    return true;
   }
 }

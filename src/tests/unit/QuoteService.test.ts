@@ -35,6 +35,8 @@ describe('QuoteServiceImpl', () => {
         ...externalQuote,
         likes: 0,
         likedByCurrentUser: false,
+        popularityScore: 0,
+        trendingScore: 0,
       });
       expect(mockExternalQuoteService.fetchRandomQuote).toHaveBeenCalledOnce();
     });
