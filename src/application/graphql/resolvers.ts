@@ -126,7 +126,9 @@ export const resolvers = {
         );
         return { success: true, collection };
       } catch (error) {
-        throw new Error(`Failed to add quote to collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        throw new Error(
+          `Failed to add quote to collection: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
       }
     },
 
@@ -139,7 +141,9 @@ export const resolvers = {
         );
         return { success: true, collection };
       } catch (error) {
-        throw new Error(`Failed to remove quote from collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        throw new Error(
+          `Failed to remove quote from collection: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
       }
     },
 
@@ -160,7 +164,9 @@ export const resolvers = {
           args.favoriteTags
         );
       } catch (error) {
-        throw new Error(`Failed to update user preferences: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        throw new Error(
+          `Failed to update user preferences: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
       }
     },
 

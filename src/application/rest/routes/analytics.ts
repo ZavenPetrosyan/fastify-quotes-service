@@ -214,13 +214,12 @@ const analyticsRoutes: FastifyPluginAsync<AnalyticsRouteOptions> = async (fastif
     }
   }, async (request, reply) => {
     try {
-      const { quoteIds, analysisType = 'comprehensive', includeMetrics = true } = request.body as {
+      const { quoteIds, includeMetrics = true } = request.body as {
         quoteIds: string[];
-        analysisType?: string;
         includeMetrics?: boolean;
       };
       
-      const comparison = await quoteService.compareQuotes(quoteIds, analysisType, includeMetrics);
+      const comparison = await quoteService.compareQuotes(quoteIds, includeMetrics);
       return comparison;
     } catch (error) {
       fastify.log.error(error);

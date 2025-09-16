@@ -1,9 +1,10 @@
 import { ExternalQuoteService } from '../../domain/services/ExternalQuoteService';
 import { Quote, QuotableApiResponseSchema, DummyJsonResponseSchema } from '../../domain/models/Quote';
+import { INFRASTRUCTURE_CONSTANTS } from '../constants';
 
 export class QuotableService implements ExternalQuoteService {
-  private readonly quotableUrl = 'https://api.quotable.io/random';
-  private readonly dummyJsonUrl = 'https://dummyjson.com/quotes/random';
+  private readonly quotableUrl = INFRASTRUCTURE_CONSTANTS.EXTERNAL_APIS.QUOTABLE_URL;
+  private readonly dummyJsonUrl = INFRASTRUCTURE_CONSTANTS.EXTERNAL_APIS.DUMMYJSON_URL;
 
   async fetchRandomQuote(): Promise<Quote> {
     try {

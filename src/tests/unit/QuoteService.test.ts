@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { QuoteServiceImpl } from '../../application/services/QuoteServiceImpl';
+import { AdvancedQuoteServiceImpl } from '../../application/services/AdvancedQuoteServiceImpl';
 import { InMemoryQuoteRepository } from '../../infrastructure/persistence/InMemoryQuoteRepository';
 import { ExternalQuoteService } from '../../domain/services/ExternalQuoteService';
 import { Quote } from '../../domain/models/Quote';
@@ -8,13 +8,13 @@ const mockExternalQuoteService: ExternalQuoteService = {
   fetchRandomQuote: vi.fn(),
 };
 
-describe('QuoteServiceImpl', () => {
-  let quoteService: QuoteServiceImpl;
+describe('AdvancedQuoteServiceImpl', () => {
+  let quoteService: AdvancedQuoteServiceImpl;
   let quoteRepository: InMemoryQuoteRepository;
 
   beforeEach(() => {
     quoteRepository = new InMemoryQuoteRepository();
-    quoteService = new QuoteServiceImpl(quoteRepository, mockExternalQuoteService);
+    quoteService = new AdvancedQuoteServiceImpl(quoteRepository, mockExternalQuoteService);
     vi.clearAllMocks();
   });
 

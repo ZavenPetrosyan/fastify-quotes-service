@@ -3,6 +3,8 @@ import { QuoteRepository } from '../../domain/repositories/QuoteRepository';
 import { ExternalQuoteService } from '../../domain/services/ExternalQuoteService';
 import { Quote, QuoteWithStats, QuoteLike } from '../../domain/models/Quote';
 import { PubSub } from 'graphql-subscriptions';
+import { DOMAIN_CONSTANTS } from '../../domain/constants';
+import { INFRASTRUCTURE_CONSTANTS } from '../../infrastructure/constants';
 
 interface UserPreferences {
   userId: string;
@@ -53,10 +55,10 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
         const externalQuote = await this.externalQuoteService.fetchRandomQuote();
         await this.quoteRepository.saveQuote(externalQuote);
         quote = externalQuote;
-        this.publishActivity('NEW_QUOTE_ADDED', { quote });
+        this.publishActivity(DOMAIN_CONSTANTS.ACTIVITY.NEW_QUOTE_ADDED, { quote });
       } catch (error) {
         if (!quote) {
-          throw new Error('Failed to fetch quote from external service and no local quotes available');
+          throw new Error(DOMAIN_CONSTANTS.ERRORS.EXTERNAL_API_FAILED);
         }
       }
     }
@@ -81,7 +83,7 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
   async likeQuote(quoteId: string, userId: string): Promise<void> {
     const quote = await this.quoteRepository.getQuoteById(quoteId);
     if (!quote) {
-      throw new Error('Quote not found');
+      throw new Error(DOMAIN_CONSTANTS.ERRORS.QUOTE_NOT_FOUND);
     }
 
     const existingLike = await this.quoteRepository.getUserLikeForQuote(quoteId, userId);
@@ -96,12 +98,12 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     };
 
     await this.quoteRepository.addLike(like);
-    this.publishActivity('QUOTE_LIKED', { quoteId, userId });
+    this.publishActivity(DOMAIN_CONSTANTS.ACTIVITY.QUOTE_LIKED, { quoteId, userId });
   }
 
   async unlikeQuote(quoteId: string, userId: string): Promise<void> {
     await this.quoteRepository.removeLike(quoteId, userId);
-    this.publishActivity('QUOTE_UNLIKED', { quoteId, userId });
+    this.publishActivity(DOMAIN_CONSTANTS.ACTIVITY.QUOTE_UNLIKED, { quoteId, userId });
   }
 
   async getSimilarQuotes(quoteId: string, limit: number, userId?: string): Promise<QuoteWithStats[]> {
@@ -156,7 +158,13 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     );
   }
 
-  async getQuotesWithFilter(filter?: any, sort?: any, limit: number = 10, offset: number = 0, userId?: string): Promise<QuoteWithStats[]> {
+  async getQuotesWithFilter(
+    filter?: any,
+    sort?: any,
+    limit: number = 10,
+    offset: number = 0,
+    userId?: string
+  ): Promise<QuoteWithStats[]> {
     let quotes = await this.quoteRepository.getAllQuotes();
 
     if (filter) {
@@ -236,7 +244,9 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     };
   }
 
-  async getAnalyticsDashboard(timeRange: string = '24h', userId?: string): Promise<any> {
+  async getAnalyticsDashboard(
+    timeRange: string = DOMAIN_CONSTANTS.LIMITS.DEFAULT_TIME_RANGE
+  ): Promise<any> {
     const analytics = await this.getAnalytics();
     const timeRangeMs = this.getTimeRangeMs(timeRange);
     const cutoffTime = new Date(Date.now() - timeRangeMs);
@@ -255,7 +265,7 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
         totalLikes: analytics.totalLikes,
         totalUsers: this.userPreferences.size,
         averageLikesPerQuote: analytics.totalQuotes > 0 ? analytics.totalLikes / analytics.totalQuotes : 0,
-        quotesAddedToday: recentActivity.filter(e => e.type === 'NEW_QUOTE_ADDED').length,
+        quotesAddedToday: recentActivity.filter(e => e.type === DOMAIN_CONSTANTS.ACTIVITY.NEW_QUOTE_ADDED).length,
       },
       trending: {
         mostLikedQuotes: analytics.trendingQuotes,
@@ -268,13 +278,16 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     };
   }
 
-  async getTrendingQuotes(limit: number = 10, timeRange: string = '24h'): Promise<QuoteWithStats[]> {
+  async getTrendingQuotes(
+    limit: number = DOMAIN_CONSTANTS.LIMITS.DEFAULT_ANALYTICS_LIMIT,
+    timeRange: string = DOMAIN_CONSTANTS.LIMITS.DEFAULT_TIME_RANGE
+  ): Promise<QuoteWithStats[]> {
     const timeRangeMs = this.getTimeRangeMs(timeRange);
     const cutoffTime = new Date(Date.now() - timeRangeMs);
 
     const recentLikes = this.activityLog
       .filter(event => 
-        event.type === 'QUOTE_LIKED' && 
+        event.type === DOMAIN_CONSTANTS.ACTIVITY.QUOTE_LIKED && 
         new Date(event.timestamp) >= cutoffTime
       );
 
@@ -296,7 +309,7 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     return quotes.filter(quote => quote !== null) as QuoteWithStats[];
   }
 
-  async getPopularAuthors(limit: number = 10): Promise<any[]> {
+  async getPopularAuthors(limit: number = DOMAIN_CONSTANTS.LIMITS.DEFAULT_ANALYTICS_LIMIT): Promise<any[]> {
     const allQuotes = await this.quoteRepository.getAllQuotes();
     const authorStats = new Map<string, { quoteCount: number; totalLikes: number }>();
 
@@ -320,30 +333,35 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
       .slice(0, limit);
   }
 
-  async discoverPatterns(patternType: string = 'engagement', timeRange: string = '7d', userId?: string): Promise<any> {
+  async discoverPatterns(
+    patternType: string = DOMAIN_CONSTANTS.LIMITS.DEFAULT_PATTERN_TYPE,
+    timeRange: string = '7d'
+  ): Promise<any> {
     const insights = [];
     const timeRangeMs = this.getTimeRangeMs(timeRange);
     const cutoffTime = new Date(Date.now() - timeRangeMs);
 
     switch (patternType) {
-      case 'engagement': {
+      case DOMAIN_CONSTANTS.PATTERNS.ENGAGEMENT: {
         const recentLikes = this.activityLog
           .filter(event => 
-            event.type === 'QUOTE_LIKED' && 
+            event.type === DOMAIN_CONSTANTS.ACTIVITY.QUOTE_LIKED && 
             new Date(event.timestamp) >= cutoffTime
           );
         
         const hourlyEngagement = this.getHourlyEngagement(recentLikes);
         insights.push({
           title: 'Peak Engagement Hours',
-          description: `Most activity occurs between ${hourlyEngagement.peakHour}:00-${hourlyEngagement.peakHour + 1}:00`,
+          description: `Most activity occurs between ${hourlyEngagement.peakHour}:00-${
+            hourlyEngagement.peakHour + 1
+          }:00`,
           confidence: 0.85,
           data: hourlyEngagement,
         });
         break;
       }
 
-      case 'sentiment': {
+      case DOMAIN_CONSTANTS.PATTERNS.SENTIMENT: {
         const allQuotes = await this.quoteRepository.getAllQuotes();
         const sentimentAnalysis = this.analyzeSentiment(allQuotes);
         insights.push({
@@ -355,7 +373,7 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
         break;
       }
 
-      case 'length': {
+      case DOMAIN_CONSTANTS.PATTERNS.LENGTH: {
         const quotesForLength = await this.quoteRepository.getAllQuotes();
         const lengthAnalysis = this.analyzeQuoteLengths(quotesForLength);
         insights.push({
@@ -371,7 +389,7 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     return {
       patternType,
       insights,
-      recommendations: this.generateRecommendations(patternType, insights),
+      recommendations: this.generateRecommendations(patternType),
       generatedAt: new Date().toISOString(),
     };
   }
@@ -384,12 +402,17 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
   async getCollection(id: string, userId: string): Promise<any> {
     const collection = this.collections.get(id);
     if (!collection || collection.userId !== userId) {
-      throw new Error('Collection not found');
+      throw new Error(DOMAIN_CONSTANTS.ERRORS.COLLECTION_NOT_FOUND);
     }
     return collection;
   }
 
-  async createCollection(name: string, description: string | undefined, isPublic: boolean | undefined, userId: string): Promise<any> {
+  async createCollection(
+    name: string,
+    description: string | undefined,
+    isPublic: boolean | undefined,
+    userId: string
+  ): Promise<any> {
     const id = this.generateId();
     const collection: QuoteCollection = {
       id,
@@ -398,7 +421,7 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
       quotes: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      isPublic: isPublic || false,
+      isPublic: isPublic || DOMAIN_CONSTANTS.LIMITS.DEFAULT_PUBLIC,
       likes: 0,
       userId,
     };
@@ -410,12 +433,12 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
   async addQuoteToCollection(collectionId: string, quoteId: string, userId: string): Promise<any> {
     const collection = this.collections.get(collectionId);
     if (!collection || collection.userId !== userId) {
-      throw new Error('Collection not found');
+      throw new Error(DOMAIN_CONSTANTS.ERRORS.COLLECTION_NOT_FOUND);
     }
 
     const quote = await this.quoteRepository.getQuoteById(quoteId);
     if (!quote) {
-      throw new Error('Quote not found');
+      throw new Error(DOMAIN_CONSTANTS.ERRORS.QUOTE_NOT_FOUND);
     }
 
     if (!collection.quotes.some(q => q.id === quoteId)) {
@@ -430,7 +453,7 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
   async removeQuoteFromCollection(collectionId: string, quoteId: string, userId: string): Promise<any> {
     const collection = this.collections.get(collectionId);
     if (!collection || collection.userId !== userId) {
-      throw new Error('Collection not found');
+      throw new Error(DOMAIN_CONSTANTS.ERRORS.COLLECTION_NOT_FOUND);
     }
 
     collection.quotes = collection.quotes.filter(q => q.id !== quoteId);
@@ -443,7 +466,7 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
   async deleteCollection(collectionId: string, userId: string): Promise<void> {
     const collection = this.collections.get(collectionId);
     if (!collection || collection.userId !== userId) {
-      throw new Error('Collection not found');
+      throw new Error(DOMAIN_CONSTANTS.ERRORS.COLLECTION_NOT_FOUND);
     }
 
     this.collections.delete(collectionId);
@@ -478,19 +501,22 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     return preferences;
   }
 
-  async compareQuotes(quoteIds: string[], analysisType: string = 'comprehensive', includeMetrics: boolean = true): Promise<any> {
+  async compareQuotes(
+    quoteIds: string[],
+    includeMetrics: boolean = true
+  ): Promise<any> {
     const quotes = await Promise.all(
       quoteIds.map(id => this.quoteRepository.getQuoteById(id))
     );
 
     const validQuotes = quotes.filter(quote => quote !== null) as Quote[];
     if (validQuotes.length < 2) {
-      throw new Error('At least 2 valid quotes required for comparison');
+      throw new Error(DOMAIN_CONSTANTS.ERRORS.QUOTE_COMPARISON_MIN);
     }
 
     const similarities = this.calculateQuoteSimilarities(validQuotes);
     const differences = this.calculateQuoteDifferences(validQuotes);
-    const recommendation = this.generateComparisonRecommendation(validQuotes, similarities);
+    const recommendation = this.generateComparisonRecommendation(similarities);
 
     const result: any = {
       quotes: validQuotes,
@@ -509,7 +535,12 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     return result;
   }
 
-  async getSmartRecommendations(userId: string, limit: number = 5, algorithm: string = 'hybrid', includeExplanation: boolean = true): Promise<any> {
+  async getSmartRecommendations(
+    userId: string,
+    limit: number = DOMAIN_CONSTANTS.LIMITS.DEFAULT_RECOMMENDATION_LIMIT,
+    algorithm: string = DOMAIN_CONSTANTS.LIMITS.DEFAULT_ALGORITHM,
+    includeExplanation: boolean = DOMAIN_CONSTANTS.LIMITS.DEFAULT_EXPLANATION
+  ): Promise<any> {
     const preferences = await this.getUserPreferences(userId);
     const allQuotes = await this.quoteRepository.getAllQuotes();
     const userLikedQuotes = await this.getUserLikedQuotes(userId);
@@ -517,22 +548,27 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     let recommendations: any[] = [];
 
     switch (algorithm) {
-      case 'collaborative': {
+      case DOMAIN_CONSTANTS.ALGORITHMS.COLLABORATIVE: {
         recommendations = await this.getCollaborativeRecommendations(userId, allQuotes, limit);
         break;
       }
-      case 'content-based': {
+      case DOMAIN_CONSTANTS.ALGORITHMS.CONTENT_BASED: {
         recommendations = await this.getContentBasedRecommendations(preferences, allQuotes, userLikedQuotes, limit);
         break;
       }
-      case 'trending': {
-        recommendations = await this.getTrendingRecommendations(allQuotes, limit);
+      case DOMAIN_CONSTANTS.ALGORITHMS.TRENDING: {
+        recommendations = await this.getTrendingRecommendations(limit);
         break;
       }
-      case 'hybrid':
+      case DOMAIN_CONSTANTS.ALGORITHMS.HYBRID:
       default: {
         const collaborative = await this.getCollaborativeRecommendations(userId, allQuotes, Math.ceil(limit / 2));
-        const contentBased = await this.getContentBasedRecommendations(preferences, allQuotes, userLikedQuotes, Math.ceil(limit / 2));
+        const contentBased = await this.getContentBasedRecommendations(
+          preferences,
+          allQuotes,
+          userLikedQuotes,
+          Math.ceil(limit / 2)
+        );
         recommendations = this.mergeRecommendations(collaborative, contentBased, limit);
         break;
       }
@@ -553,7 +589,7 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     return {
       recommendations: enrichedRecommendations,
       algorithm,
-      reason: this.getRecommendationReason(algorithm, recommendations),
+      reason: this.getRecommendationReason(algorithm),
     };
   }
 
@@ -571,19 +607,24 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     return quotes.filter(quote => quote !== null) as QuoteWithStats[];
   }
 
-  async getLiveFeed(userId?: string, limit: number = 10, feedType: string = 'personalized', includeActivity: boolean = true): Promise<any> {
+  async getLiveFeed(
+    userId?: string,
+    limit: number = DOMAIN_CONSTANTS.LIMITS.DEFAULT_FEED_LIMIT,
+    feedType: string = DOMAIN_CONSTANTS.LIMITS.DEFAULT_FEED_TYPE,
+    includeActivity: boolean = true
+  ): Promise<any> {
     let quotes: Quote[] = [];
 
     switch (feedType) {
-      case 'trending': {
+      case DOMAIN_CONSTANTS.FEED_TYPES.TRENDING: {
         quotes = (await this.getTrendingQuotes(limit)).map(q => q as any);
         break;
       }
-      case 'recent': {
+      case DOMAIN_CONSTANTS.FEED_TYPES.RECENT: {
         quotes = (await this.quoteRepository.getAllQuotes()).slice(-limit);
         break;
       }
-      case 'popular': {
+      case DOMAIN_CONSTANTS.FEED_TYPES.POPULAR: {
         const allQuotes = await this.quoteRepository.getAllQuotes();
         const quotesWithLikes = await Promise.all(
           allQuotes.map(async quote => {
@@ -597,10 +638,15 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
           .map(({ quote }) => quote);
         break;
       }
-      case 'personalized':
+      case DOMAIN_CONSTANTS.FEED_TYPES.PERSONALIZED:
       default: {
         if (userId) {
-          const recommendations = await this.getSmartRecommendations(userId, limit, 'hybrid', false);
+          const recommendations = await this.getSmartRecommendations(
+            userId,
+            limit,
+            DOMAIN_CONSTANTS.ALGORITHMS.HYBRID,
+            false
+          );
           quotes = recommendations.recommendations.map((rec: any) => rec.quote);
         } else {
           quotes = (await this.quoteRepository.getAllQuotes()).slice(-limit);
@@ -625,29 +671,28 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
       feed: enrichedQuotes,
       feedType,
       lastUpdated: new Date().toISOString(),
-      nextUpdate: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 minutes
+      nextUpdate: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
     };
   }
 
-  // Sharing and reporting
   async shareQuote(quoteId: string, userId: string): Promise<string> {
     const quote = await this.quoteRepository.getQuoteById(quoteId);
     if (!quote) {
-      throw new Error('Quote not found');
+      throw new Error(DOMAIN_CONSTANTS.ERRORS.QUOTE_NOT_FOUND);
     }
 
     const shareId = this.generateId();
-    const shareUrl = `https://quotes-service.com/share/${shareId}`;
+    const shareUrl = `${INFRASTRUCTURE_CONSTANTS.SHARE.BASE_URL}/${shareId}`;
     this.shareLinks.set(shareId, quoteId);
     
-    this.publishActivity('QUOTE_SHARED', { quoteId, userId, shareId });
+    this.publishActivity(DOMAIN_CONSTANTS.ACTIVITY.QUOTE_SHARED, { quoteId, userId, shareId });
     return shareUrl;
   }
 
   async reportQuote(quoteId: string, reason: string, userId: string): Promise<boolean> {
     const quote = await this.quoteRepository.getQuoteById(quoteId);
     if (!quote) {
-      throw new Error('Quote not found');
+      throw new Error(DOMAIN_CONSTANTS.ERRORS.QUOTE_NOT_FOUND);
     }
 
     const report = {
@@ -661,11 +706,10 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     existingReports.push(report);
     this.reports.set(quoteId, existingReports);
 
-    this.publishActivity('QUOTE_REPORTED', { quoteId, userId, reason });
+    this.publishActivity(DOMAIN_CONSTANTS.ACTIVITY.QUOTE_REPORTED, { quoteId, userId, reason });
     return true;
   }
 
-  // Private helper methods
   private async enrichQuoteWithStats(quote: Quote, userId?: string): Promise<QuoteWithStats> {
     const likes = await this.quoteRepository.getLikesByQuoteId(quote.id);
     const likedByCurrentUser = userId ? 
@@ -717,15 +761,19 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     const words1 = this.extractWords(quote1.content);
     const words2 = this.extractWords(quote2.content);
     
-    const authorMatch = quote1.author.toLowerCase() === quote2.author.toLowerCase() ? 0.3 : 0;
+    const authorMatch = quote1.author.toLowerCase() === quote2.author.toLowerCase()
+      ? DOMAIN_CONSTANTS.SCORING.AUTHOR_MATCH_WEIGHT
+      : 0;
     
     const tagIntersection = quote1.tags.filter(tag => 
       quote2.tags.some(tag2 => tag2.toLowerCase() === tag.toLowerCase())
     ).length;
-    const tagSimilarity = (tagIntersection / Math.max(quote1.tags.length, quote2.tags.length, 1)) * 0.2;
+    const tagSimilarity = (tagIntersection / Math.max(quote1.tags.length, quote2.tags.length, 1)) *
+      DOMAIN_CONSTANTS.SCORING.TAG_SIMILARITY_WEIGHT;
     
     const commonWords = words1.filter(word => words2.includes(word)).length;
-    const wordSimilarity = (commonWords / Math.max(words1.length, words2.length, 1)) * 0.5;
+    const wordSimilarity = (commonWords / Math.max(words1.length, words2.length, 1)) *
+      DOMAIN_CONSTANTS.SCORING.WORD_SIMILARITY_WEIGHT;
     
     return authorMatch + tagSimilarity + wordSimilarity;
   }
@@ -733,9 +781,9 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
   private extractWords(text: string): string[] {
     return text
       .toLowerCase()
-      .replace(/[^\w\s]/g, ' ')
-      .split(/\s+/)
-      .filter(word => word.length > 2);
+      .replace(DOMAIN_CONSTANTS.TEXT.WORD_REGEX, ' ')
+      .split(DOMAIN_CONSTANTS.TEXT.WHITESPACE_REGEX)
+      .filter(word => word.length > DOMAIN_CONSTANTS.TEXT.MIN_WORD_LENGTH);
   }
 
   private async getTotalLikes(): Promise<number> {
@@ -763,14 +811,8 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
   }
 
   private getTimeRangeMs(timeRange: string): number {
-    const ranges: { [key: string]: number } = {
-      '1h': 60 * 60 * 1000,
-      '24h': 24 * 60 * 60 * 1000,
-      '7d': 7 * 24 * 60 * 60 * 1000,
-      '30d': 30 * 24 * 60 * 60 * 1000,
-      'all': Number.MAX_SAFE_INTEGER,
-    };
-    return ranges[timeRange] || ranges['24h'];
+    return DOMAIN_CONSTANTS.TIME_RANGES[timeRange as keyof typeof DOMAIN_CONSTANTS.TIME_RANGES] ||
+      DOMAIN_CONSTANTS.TIME_RANGES['24h'];
   }
 
   private generateLikesOverTime(timeRange: string): any[] {
@@ -784,7 +826,7 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
       const endTime = new Date(cutoffTime.getTime() + ((i + 1) * interval));
       
       const likesInInterval = this.activityLog.filter(event => 
-        event.type === 'QUOTE_LIKED' &&
+        event.type === DOMAIN_CONSTANTS.ACTIVITY.QUOTE_LIKED &&
         new Date(event.timestamp) >= startTime &&
         new Date(event.timestamp) < endTime
       ).length;
@@ -820,7 +862,7 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
         averageLikes: stats.count > 0 ? stats.totalLikes / stats.count : 0,
       }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
+      .slice(0, DOMAIN_CONSTANTS.LIMITS.MAX_TOP_TAGS);
   }
 
   private getHourlyEngagement(events: ActivityEvent[]): any {
@@ -840,8 +882,8 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
   }
 
   private analyzeSentiment(quotes: Quote[]): any {
-    const positiveWords = ['love', 'happy', 'joy', 'success', 'beautiful', 'amazing', 'wonderful', 'great', 'excellent', 'fantastic'];
-    const negativeWords = ['hate', 'sad', 'pain', 'failure', 'ugly', 'terrible', 'awful', 'horrible', 'bad', 'worst'];
+    const positiveWords = DOMAIN_CONSTANTS.TEXT.POSITIVE_WORDS;
+    const negativeWords = DOMAIN_CONSTANTS.TEXT.NEGATIVE_WORDS;
 
     let positiveCount = 0;
     let negativeCount = 0;
@@ -887,19 +929,19 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     };
   }
 
-  private generateRecommendations(patternType: string, insights: any[]): string[] {
+  private generateRecommendations(patternType: string): string[] {
     const recommendations = [];
     
     switch (patternType) {
-      case 'engagement':
+      case DOMAIN_CONSTANTS.PATTERNS.ENGAGEMENT:
         recommendations.push('Consider posting new quotes during peak engagement hours');
         recommendations.push('Focus on quotes that generate discussion and interaction');
         break;
-      case 'sentiment':
+      case DOMAIN_CONSTANTS.PATTERNS.SENTIMENT:
         recommendations.push('Balance positive and inspirational content with thought-provoking quotes');
         recommendations.push('Consider the emotional impact of quote selection');
         break;
-      case 'length':
+      case DOMAIN_CONSTANTS.PATTERNS.LENGTH:
         recommendations.push('Optimize quote length for better engagement');
         recommendations.push('Test different quote lengths to find the sweet spot');
         break;
@@ -909,18 +951,18 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
   }
 
   private calculatePopularityScore(likes: number): number {
-    return Math.min(likes / 10, 1.0);
+    return Math.min(likes / DOMAIN_CONSTANTS.SCORING.POPULARITY_DIVISOR, 1.0);
   }
 
   private calculateTrendingScore(quoteId: string): number {
     const recentLikes = this.activityLog
       .filter(event => 
-        event.type === 'QUOTE_LIKED' && 
+        event.type === DOMAIN_CONSTANTS.ACTIVITY.QUOTE_LIKED && 
         event.quoteId === quoteId &&
         new Date(event.timestamp) > new Date(Date.now() - 24 * 60 * 60 * 1000)
       ).length;
 
-    return Math.min(recentLikes / 5, 1.0);
+    return Math.min(recentLikes / DOMAIN_CONSTANTS.SCORING.TRENDING_DIVISOR, 1.0);
   }
 
   private calculateQuoteSimilarities(quotes: Quote[]): any[] {
@@ -932,7 +974,9 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
         similarities.push({
           field: 'content',
           score: similarity,
-          description: `${similarity > 0.7 ? 'High' : similarity > 0.4 ? 'Medium' : 'Low'} similarity in content and themes`,
+          description: `${
+            similarity > 0.7 ? 'High' : similarity > 0.4 ? 'Medium' : 'Low'
+          } similarity in content and themes`,
         });
       }
     }
@@ -958,14 +1002,16 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
       differences.push({
         field: 'length',
         values: lengths.map(l => `${l} chars`),
-        description: `Significant variation in quote lengths (${Math.min(...lengths)}-${Math.max(...lengths)} characters)`,
+        description: `Significant variation in quote lengths (${Math.min(...lengths)}-${Math.max(
+          ...lengths
+        )} characters)`,
       });
     }
 
     return differences;
   }
 
-  private generateComparisonRecommendation(quotes: Quote[], similarities: any[]): string {
+  private generateComparisonRecommendation(similarities: any[]): string {
     const avgSimilarity = similarities.reduce((sum, sim) => sum + sim.score, 0) / similarities.length;
     
     if (avgSimilarity > 0.7) {
@@ -1009,18 +1055,20 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
         let score = 0;
         
         if (preferences.favoriteAuthors.includes(quote.author)) {
-          score += 0.3;
+          score += DOMAIN_CONSTANTS.SCORING.PREFERENCE_AUTHOR_WEIGHT;
         }
         
         const matchingTags = quote.tags.filter(tag => 
           preferences.favoriteTags.includes(tag)
         ).length;
-        score += (matchingTags / Math.max(quote.tags.length, 1)) * 0.2;
+        score += (matchingTags / Math.max(quote.tags.length, 1)) * DOMAIN_CONSTANTS.SCORING.PREFERENCE_TAG_WEIGHT;
         
         return {
           quote,
           score,
-          reason: `Based on your preferences for ${preferences.favoriteAuthors.join(', ')} and tags: ${preferences.favoriteTags.join(', ')}`,
+          reason: `Based on your preferences for ${preferences.favoriteAuthors.join(
+            ', '
+          )} and tags: ${preferences.favoriteTags.join(', ')}`,
           confidence: Math.min(score, 1.0),
         };
       })
@@ -1030,17 +1078,22 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     return recommendations;
   }
 
-  private async getContentBasedRecommendations(preferences: UserPreferences, allQuotes: Quote[], userLikedQuotes: string[], limit: number): Promise<any[]> {
+  private async getContentBasedRecommendations(
+    preferences: UserPreferences,
+    allQuotes: Quote[],
+    userLikedQuotes: string[],
+    limit: number
+  ): Promise<any[]> {
     const recommendations = allQuotes
       .filter(quote => !userLikedQuotes.includes(quote.id))
       .map(quote => {
         let score = 0;
         
         const contentScore = this.calculateContentSimilarity(quote, userLikedQuotes, allQuotes);
-        score += contentScore * 0.6;
+        score += contentScore * DOMAIN_CONSTANTS.SCORING.CONTENT_SIMILARITY_WEIGHT;
         
         if (preferences.favoriteAuthors.includes(quote.author)) {
-          score += 0.3;
+          score += DOMAIN_CONSTANTS.SCORING.PREFERENCE_AUTHOR_WEIGHT;
         }
         
         return {
@@ -1056,13 +1109,13 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     return recommendations;
   }
 
-  private async getTrendingRecommendations(allQuotes: Quote[], limit: number): Promise<any[]> {
+  private async getTrendingRecommendations(limit: number): Promise<any[]> {
     const trendingQuotes = await this.getTrendingQuotes(limit);
     return trendingQuotes.map(quote => ({
       quote,
-      score: 0.8, // High score for trending
+      score: DOMAIN_CONSTANTS.SCORING.TRENDING_SCORE,
       reason: 'Currently trending quotes',
-      confidence: 0.9,
+      confidence: DOMAIN_CONSTANTS.SCORING.TRENDING_CONFIDENCE,
     }));
   }
 
@@ -1077,15 +1130,15 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
       .slice(0, limit);
   }
 
-  private getRecommendationReason(algorithm: string, recommendations: any[]): string {
+  private getRecommendationReason(algorithm: string): string {
     switch (algorithm) {
-      case 'collaborative':
+      case DOMAIN_CONSTANTS.ALGORITHMS.COLLABORATIVE:
         return 'Based on similar users and your preferences';
-      case 'content-based':
+      case DOMAIN_CONSTANTS.ALGORITHMS.CONTENT_BASED:
         return 'Based on content similarity to your liked quotes';
-      case 'trending':
+      case DOMAIN_CONSTANTS.ALGORITHMS.TRENDING:
         return 'Based on current trending quotes';
-      case 'hybrid':
+      case DOMAIN_CONSTANTS.ALGORITHMS.HYBRID:
         return 'Combining multiple recommendation strategies for optimal results';
       default:
         return 'Personalized recommendations';
@@ -1137,13 +1190,13 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
     let score = 0.5;
     
     if (preferences.favoriteAuthors.includes(quote.author)) {
-      score += 0.3;
+      score += DOMAIN_CONSTANTS.SCORING.PREFERENCE_AUTHOR_WEIGHT;
     }
     
     const matchingTags = quote.tags.filter(tag => 
       preferences.favoriteTags.includes(tag)
     ).length;
-    score += (matchingTags / Math.max(quote.tags.length, 1)) * 0.2;
+    score += (matchingTags / Math.max(quote.tags.length, 1)) * DOMAIN_CONSTANTS.SCORING.PREFERENCE_TAG_WEIGHT;
     
     return Math.min(score, 1.0);
   }
@@ -1164,10 +1217,10 @@ export class AdvancedQuoteServiceImpl implements QuoteService {
       
       this.activityLog.push(event);
       
-      if (type === 'QUOTE_LIKED') {
-        this.pubsub.publish(`QUOTE_LIKED_${data.quoteId}`, { quoteLiked: data.quote });
-      } else if (type === 'NEW_QUOTE_ADDED') {
-        this.pubsub.publish('NEW_QUOTE_ADDED', { newQuoteAdded: data.quote });
+      if (type === DOMAIN_CONSTANTS.ACTIVITY.QUOTE_LIKED) {
+        this.pubsub.publish(`${DOMAIN_CONSTANTS.ACTIVITY.QUOTE_LIKED}_${data.quoteId}`, { quoteLiked: data.quote });
+      } else if (type === DOMAIN_CONSTANTS.ACTIVITY.NEW_QUOTE_ADDED) {
+        this.pubsub.publish(DOMAIN_CONSTANTS.ACTIVITY.NEW_QUOTE_ADDED, { newQuoteAdded: data.quote });
       } else if (data.userId) {
         this.pubsub.publish(`USER_ACTIVITY_${data.userId}`, { userActivity: event });
       }

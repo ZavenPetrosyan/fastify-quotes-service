@@ -16,14 +16,14 @@ import { QuotableService } from './infrastructure/external/QuotableService';
 import { typeDefs } from './application/graphql/schema';
 import { resolvers } from './application/graphql/resolvers';
 import { PubSub } from 'graphql-subscriptions';
-
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-const HOST = process.env.HOST || '0.0.0.0';
+import config from './config/environment';
+import { APP_CONSTANTS } from './application/constants';
+import { INFRASTRUCTURE_CONSTANTS } from './infrastructure/constants';
 
 async function createApp() {
   const fastify = Fastify({
-    logger: process.env.NODE_ENV === 'development' ? {
-      level: process.env.LOG_LEVEL || 'info',
+    logger: config.NODE_ENV === 'development' ? {
+      level: config.LOG_LEVEL,
       transport: {
         target: 'pino-pretty',
         options: {
@@ -33,7 +33,7 @@ async function createApp() {
         },
       },
     } : {
-      level: process.env.LOG_LEVEL || 'info',
+      level: config.LOG_LEVEL,
     },
   });
 
@@ -45,53 +45,45 @@ async function createApp() {
   await fastify.register(helmet, {
     contentSecurityPolicy: {
       directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'"],
-        imgSrc: ["'self'", "data:", "https:"],
+        defaultSrc: INFRASTRUCTURE_CONSTANTS.SECURITY.CSP_DEFAULT_SRC,
+        styleSrc: INFRASTRUCTURE_CONSTANTS.SECURITY.CSP_STYLE_SRC,
+        scriptSrc: INFRASTRUCTURE_CONSTANTS.SECURITY.CSP_SCRIPT_SRC,
+        imgSrc: INFRASTRUCTURE_CONSTANTS.SECURITY.CSP_IMG_SRC,
       },
     },
   });
 
   await fastify.register(cors, {
-    origin: process.env.NODE_ENV === 'production' ? false : true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    origin: true,
+    methods: INFRASTRUCTURE_CONSTANTS.SECURITY.CORS_METHODS,
   });
 
   await fastify.register(rateLimit, {
-    max: 100,
-    timeWindow: '1 minute',
+    max: config.RATE_LIMIT_MAX,
+    timeWindow: config.RATE_LIMIT_TIME_WINDOW,
   });
 
   await fastify.register(requestIdPlugin);
 
-  // Register WebSocket support for GraphQL subscriptions
   await fastify.register(require('@fastify/websocket'));
 
   await fastify.register(swagger, {
     swagger: {
       info: {
-        title: 'Fastify Quotes Service',
-        description: 'A TypeScript web service built with Fastify for serving random quotes',
-        version: '1.0.0',
+        title: APP_CONSTANTS.SWAGGER.TITLE,
+        description: APP_CONSTANTS.SWAGGER.DESCRIPTION,
+        version: APP_CONSTANTS.SWAGGER.VERSION,
       },
-      host: `localhost:${PORT}`,
-      schemes: ['http'],
-      consumes: ['application/json'],
-      produces: ['application/json'],
-      tags: [
-        { name: 'health', description: 'Health check endpoints' },
-        { name: 'quotes', description: 'Quote management endpoints' },
-        { name: 'analytics', description: 'Advanced analytics and insights' },
-        { name: 'recommendations', description: 'Smart recommendation engine' },
-        { name: 'insights', description: 'Pattern discovery and insights' },
-        { name: 'feed', description: 'Real-time quote feeds' },
-      ],
+      host: `localhost:${config.PORT}`,
+      schemes: APP_CONSTANTS.SWAGGER.SCHEMES,
+      consumes: APP_CONSTANTS.SWAGGER.CONSUMES,
+      produces: APP_CONSTANTS.SWAGGER.PRODUCES,
+      tags: [...APP_CONSTANTS.SWAGGER.TAGS],
     },
   });
 
   await fastify.register(swaggerUi, {
-    routePrefix: '/docs',
+    routePrefix: APP_CONSTANTS.ENDPOINTS.DOCS,
     uiConfig: {
       docExpansion: 'full',
       deepLinking: false,
@@ -116,13 +108,13 @@ async function createApp() {
       pubsub,
     }),
     graphiql: {
-      enabled: true,
+      enabled: APP_CONSTANTS.GRAPHQL.ENABLED,
     },
-    path: '/graphql',
-    routes: true,
-    ide: true,
-    allowBatchedQueries: true,
-    subscription: true,
+    path: APP_CONSTANTS.GRAPHQL.PATH,
+    routes: APP_CONSTANTS.GRAPHQL.ROUTES,
+    ide: APP_CONSTANTS.GRAPHQL.IDE,
+    allowBatchedQueries: APP_CONSTANTS.GRAPHQL.BATCHED_QUERIES,
+    subscription: APP_CONSTANTS.GRAPHQL.SUBSCRIPTION,
   });
 
   await fastify.register(quotesRoutes, { quoteService });
@@ -135,10 +127,14 @@ async function start() {
   try {
     const app = await createApp();
     
-    await app.listen({ port: PORT, host: HOST });
-    app.log.info(`Server listening on http://${HOST}:${PORT}`);
-    app.log.info(`Swagger documentation available at http://${HOST}:${PORT}/docs`);
-    app.log.info(`GraphiQL available at http://${HOST}:${PORT}/graphiql`);
+    await app.listen({ port: config.PORT, host: config.HOST });
+    app.log.info(`Server listening on http://${config.HOST}:${config.PORT}`);
+    app.log.info(
+      `Swagger documentation available at http://${config.HOST}:${config.PORT}${APP_CONSTANTS.ENDPOINTS.DOCS}`
+    );
+    app.log.info(
+      `GraphiQL available at http://${config.HOST}:${config.PORT}${APP_CONSTANTS.GRAPHQL.PATH}`
+    );
   } catch (error) {
     console.error('Error starting server:', error);
     process.exit(1);
